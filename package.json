@@ -1,7 +1,7 @@
 {
   "name": "dev.nova.tritiumbotv2",
   "version": "2.0.0",
-  "description": "A simple, yet robust bot for the Signal messaging service.",
+  "description": "A simple, fast, and robust bot for the Signal messaging service.",
   "main": "index.js",
   "type": "module",
   "scripts": {

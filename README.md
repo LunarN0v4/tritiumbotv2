@@ -1,6 +1,6 @@
 # TritiumBot v2
 
-A simple, yet robust bot for the Signal messaging service.  
+A simple, fast, and robust bot for the Signal messaging service.  
 
 [!!! REQUIRES A VALID SIGNAL-CLI SETUP BEFOREHAND !!!](https://github.com/AsamK/signal-cli)  
 
