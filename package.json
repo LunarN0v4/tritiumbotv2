@@ -1,0 +1,21 @@
+{
+  "name": "dev.nova.tritiumbotv2",
+  "version": "2.0.0",
+  "description": "A simple, yet robust bot for the Signal messaging service.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "author": "Nova (github.com/LunarN0v4)",
+  "license": "MIT",
+  "dependencies": {
+    "@axiomhq/js": "^1.2.0",
+    "axios": "^1.7.7",
+    "jsonc-parser": "^3.3.1",
+    "mongoose": "^8.8.1",
+    "net": "^1.0.2",
+    "node-uname": "^3.1.1"
+  }
+}

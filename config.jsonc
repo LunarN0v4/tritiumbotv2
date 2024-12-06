@@ -1,0 +1,12 @@
+{
+    "axiomtoken": "", // This should contain the token you use for logging with Axiom, if you don't have one, you can leave this blank
+    "phonenumber": "", // This should contain the phone number you used with signal-cli for setup, including the country code (you can do `signal-cli listAccounts` to get this)
+    "socketpath": "", // This should contain the path you want for the signal-cli UNIX socket
+    "blacklist": [], // This should contain an array of Signal UUIDs that cannot use the bot
+    "prefix": "-", // This should contain the prefix you want each command to start with
+    "botname": "Tritium", // This should contain the first name you want the bot to have on Signal
+    "botversion": true, // This should contain a boolean value of whether you want the bot to display its version as the last name
+    "botavatar": "", // This should contain the path of the image you want the bot to have as its avatar
+    "botabout": "A simple bot for Signal, powered by TritiumBot.", // This should contain the about you want the bot to have
+    "mongoosecon": "mongodb://localhost:27017/tritium" // This should contain the connection string for the MongoDB database you want to use
+}
