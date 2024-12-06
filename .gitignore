@@ -1,5 +1,4 @@
 .deepsource.toml
 node_modules/
 package-lock.json
-config.json
-commands.cjs
+config.jsonc
