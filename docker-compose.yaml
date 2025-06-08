@@ -1,0 +1,37 @@
+services:
+    signal:
+        build:
+            context: .
+            dockerfile: ./Signal.Dockerfile
+        container_name: tritiumbot-signal
+        restart: unless-stopped
+        networks:
+            - tritiumbot-network
+        volumes:
+            - ./:/app:rw
+        attach: false
+    tritium:
+        build:
+            context: .
+            dockerfile: ./Tritium.Dockerfile
+        container_name: tritiumbot-tritium
+        restart: unless-stopped
+        networks:
+            - tritiumbot-network
+        volumes:
+            - ./:/app:rw
+    mongodb:
+        image: mongodb/mongodb-community-server:latest
+        container_name: tritiumbot-mongodb
+        user: mongodb
+        volumes:
+            - ./data/db:/data/db:rw
+            - ./data/configdb:/data/configdb:rw
+        restart: unless-stopped
+        networks:
+            - tritiumbot-network
+
+networks:
+    tritiumbot-network:
+        driver: bridge
+        name: tritiumbot-network

@@ -1,4 +1,6 @@
+.bak
 .deepsource.toml
 node_modules/
-package-lock.json
 config.jsonc
+data/
+config/
