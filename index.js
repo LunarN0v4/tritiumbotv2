@@ -92,7 +92,7 @@ function signalclihook() {
     });
 };
 
-export function setupbotprofile() {
+function setupbotprofile() {
     const client = new net.Socket();
     startconn(client, () => {
         const tid = Math.floor(Math.random() * 1024) + 1;
