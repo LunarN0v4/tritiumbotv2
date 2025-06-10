@@ -42,7 +42,7 @@ function gracefulShutdown() {
         });
         daemon.kill('SIGTERM');
         setTimeout(() => {
-            console.error('Could not shut down TritiumBot gracefully, forcefully shutting down...');
+            console.error(`Could not shut down ${botname} gracefully, forcefully shutting down...`);
             daemon.kill('SIGKILL');
             process.exit(1);
         }, 5000);
@@ -127,7 +127,7 @@ export function setupbotprofile() {
 }
 
 function main() {
-    console.log('TritiumBot starting...');
+    console.log(`${botname} starting...`);
     daemon = signalclidaemon();
     if (socketpath.includes(':')) {
         console.log('Method: TCP');
