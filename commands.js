@@ -167,7 +167,7 @@ const usercommands = {
         }
     },
     "nick": {
-        description: `Set your nickname for ${botname}"`,
+        description: `Set your nickname for ${botname}`,
         arguments: ['nickname'],
         execute: async (envelope, message) => {
             try {
