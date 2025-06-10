@@ -15,7 +15,7 @@ if (config.socketpath === '' || config.socketpath === null || config.socketpath 
 };
 const socketpath = config.socketpath;
 const botname = config.botname || 'TritiumBot';
-const botversion = config.botversion || true;
+const botversion = config.botversion ?? true;
 const tagname = config.tagname || 'Development';
 const botavatar = config.botavatar;
 const botabout = config.botabout || 'A simple, fast, and robust bot for Signal, powered by TritiumBot.';
@@ -107,14 +107,14 @@ function setupbotprofile() {
                 about: botabout,
             },
         }
-        if (botversion && tagname) {
+        if (botversion === true && tagname) {
             json.params.familyName = `[${process.env.npm_package_version} ${tagname}]`;
-        } else if (botversion) {
+        } else if (botversion === true) {
             json.params.familyName = `[${process.env.npm_package_version}]`;
         } else if (tagname) {
             json.params.familyName = `${tagname}`;
         }
-        if (botavatar) {
+        if (botavatar && fs.existsSync(botavatar)) {
             json.params.avatar = botavatar;
         }
         json = JSON.stringify(json);
