@@ -31,40 +31,54 @@ const { exportmodels } = mongoosemodule;
 const mongoose = exportmodels();
 
 let config = parseJsonc(fs.readFileSync('config.jsonc', 'utf8'));
-const prefix = config.prefix;
+const prefix = config.prefix || '-';
+const botname = config.botname || 'TritiumBot';
 const phonenumber = config.phonenumber;
 const managedaccount = config.managedaccount;
 config = undefined;
 
+function escapereg(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const ic = /[\u00AD\u200B\u200C\u200D\u2060\uFEFF\uFE00-\uFE0F]/gu;
+
 const guestcommands = {
     "register": {
-        description: "Register your Signal account with TritiumBot",
+        description: `Register your Signal account with ${botname}`,
         arguments: null,
         execute: async (envelope, message) => {
             const User = mongoose.model('User');
             try {
                 const searchuser = await User.findOne({ userid: envelope.sourceUuid });
                 if (searchuser) {
-                    await sendresponse('You are already registered as a TritiumBot user $MENTIONUSER.', envelope, `${prefix}register`, true);
+                    await sendresponse(`You are already registered as a ${botname} user $MENTIONUSER.`, envelope, `${prefix}register`, true);
                     return;
                 } else {
+                    const contact = await getcontacts(phonenumber, envelope.sourceUuid);
+                    const profile = contact.profile;
+                    let name;
+                    if (profile && profile.givenName && profile.givenName !== null) {
+                        name = profile.givenName;
+                    } else {
+                        name = 'Unknown';
+                    }
                     const user = new User({
                         userid: envelope.sourceUuid,
+                        username: name,
                         accesslevel: 0,
                         properties: {tags: []},
                     });
                     await user.save();
-                    await sendresponse('You are now registered as a TritiumBot user $MENTIONUSER!', envelope, `${prefix}register`);
-                    const contact = await getcontacts(phonenumber, envelope.sourceUuid);
+                    await sendresponse(`You are now registered as a ${botname} user $MENTIONUSER!`, envelope, `${prefix}register`);
                     if (!contact) {
-                        await sendmessage(`Hiya user!\nIt seems you have registered for a TritiumBot account without sending me a DM first.\nThat's okay if so!\nPlease accept this message request so I can get to know you better.`, envelope.sourceUuid, phonenumber);
+                        await sendmessage(`Hiya user!\nIt seems you have registered for a ${botname} account without sending me a DM first.\nThat's okay if so!\nPlease accept this message request so I can get to know you better.`, envelope.sourceUuid, phonenumber);
                         return;
                     }
-                    const profile = contact.profile;
                     if (profile && profile.givenName != null && profile.givenName !== '') {
                         return;
                     } else {
-                        await sendmessage(`Hiya user!\nIt seems you have registered for a TritiumBot account without sending me a DM first.\nThat's okay if so!\nPlease accept this message request so I can get to know you better.`, envelope.sourceUuid, phonenumber);
+                        await sendmessage(`Hiya user!\nIt seems you have registered for a ${botname} account without sending me a DM first.\nThat's okay if so!\nPlease accept this message request so I can get to know you better.`, envelope.sourceUuid, phonenumber);
                     }
                 }
             } catch (err) {
@@ -76,20 +90,20 @@ const guestcommands = {
 
 const usercommands = {
     "unregister": {
-        description: "Delete all your data from TritiumBot",
+        description: `Delete all your data from ${botname}`,
         arguments: null,
         execute: async (envelope, message) => {
             try {
                 const User = mongoose.model('User');
                 await User.deleteOne({ userid: envelope.sourceUuid });
-                await sendresponse('You are no longer registered as a TritiumBot user $MENTIONUSER.', envelope, `${prefix}unregister`);
+                await sendresponse(`You are no longer registered as a ${botname} user $MENTIONUSER.`, envelope, `${prefix}unregister`);
             } catch (err) {
                 await sendresponse('Unable to connect to database, is MongoDB running?', envelope, `${prefix}unregister`, true);
             }
         }
     },
     "subscribe": {
-        description: "Subscribe to TritiumBot broadcasts",
+        description: `Subscribe to ${botname} broadcasts`,
         arguments: ['true / false'],
         execute: async (envelope, message) => {
             try {
@@ -98,21 +112,21 @@ const usercommands = {
                 if (!user.properties) {
                     user.properties = {};
                 }
-                if (message === `${prefix}subscribe true`) {
+                if (new RegExp(`^${escapereg(prefix)}subscribe\\s+true$`, 'i').test(message.trim())) {
                     user.properties.subscribed = true;
                     user.markModified('properties');
                     await user.save();
-                    await sendresponse('You are now subscribed to TritiumBot broadcasts $MENTIONUSER!', envelope, `${prefix}subscribe true`, false);
+                    await sendresponse(`You are now subscribed to ${botname} broadcasts $MENTIONUSER!`, envelope, `${prefix}subscribe true`, false);
                     return;
                 }
-                if (message === `${prefix}subscribe false`) {
+                if (new RegExp(`^${escapereg(prefix)}subscribe\\s+false$`, 'i').test(message.trim())) {
                     user.properties.subscribed = false;
                     user.markModified('properties');
                     await user.save();
-                    await sendresponse('You are now unsubscribed from TritiumBot broadcasts $MENTIONUSER!', envelope, `${prefix}subscribe false`, false);
+                    await sendresponse(`You are now unsubscribed from ${botname} broadcasts $MENTIONUSER!`, envelope, `${prefix}subscribe false`, false);
                     return;
                 }
-                sendresponse('Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from TritiumBot broadcasts.', envelope, `${prefix}subscribe`, true);
+                sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
             } catch (err) {
                 await sendresponse('Unable to connect to database, is MongoDB running?', envelope, `${prefix}subscribe`, true);
             }
@@ -137,8 +151,12 @@ const usercommands = {
                 };
 
                 for (const prop in properties) {
-                    if (Object.prototype.hasOwnProperty.call(properties, prop)) {
-                        pm += `${prop}: ${fv(properties[prop])}\n`;
+                    if (prop === 'authkey') {
+                        pm += `authkey: [womp womp no key 4 u]\n`;
+                    } else {
+                        if (Object.prototype.hasOwnProperty.call(properties, prop)) {
+                            pm += `${prop}: ${fv(properties[prop])}\n`;
+                        }
                     }
                 }
                 pm = pm.trim();
@@ -148,6 +166,182 @@ const usercommands = {
             }
         }
     },
+    "nick": {
+        description: `Set your nickname for ${botname}"`,
+        arguments: ['nickname'],
+        execute: async (envelope, message) => {
+            try {
+                const User = mongoose.model('User');
+                const user = await User.findOne({ userid: envelope.sourceUuid });
+                if (!user.properties) {
+                    user.properties = {};
+                }
+                const match = message.match(new RegExp(`^${escapereg(prefix)}nick\\s+(.+)$`, 'i'));
+                if (!match || !match[1] || match[1].trim().length === 0) {
+                    await sendresponse('Please provide a valid nickname.', envelope, `${prefix}nick`, true);
+                    return;
+                }
+                const nickname = match[1].trim();
+                user.properties.nickname = nickname;
+                user.markModified('properties');
+                await user.save();
+                await sendresponse(`Your nickname has been set to "${nickname}" $MENTIONUSER!`, envelope, `${prefix}nick`, false);
+            } catch (err) {
+                await sendresponse('Failed to set your nickname. Please try again later.', envelope, `${prefix}nick`, true);
+            }
+        }
+    },
+    "authkey": {
+        description: `Create an AuthKey for ${botname} services`,
+        arguments: null,
+        execute: async (envelope, message) => {
+            try {
+                const User = mongoose.model('User');
+                const user = await User.findOne({ userid: envelope.sourceUuid });
+                if (!user.properties) {
+                    user.properties = user.properties || {};
+                }
+                const kbuf = new Uint8Array(128);
+                for (let i = 0; i < 128; i++) {
+                    kbuf[i] = Math.floor(Math.random() * 256);
+                }
+                user.properties.authkey = {
+                    key: Array.from(kbuf),
+                    createdat: Date.now()
+                };
+                user.markModified('properties');
+                await user.save();
+                const sidbuf = Buffer.from(envelope.sourceUuid, 'utf8');
+                const akbuf = Buffer.from(user.properties.authkey.key);
+                const cbuf = Buffer.concat([sidbuf, akbuf]);
+                const token = cbuf.toString('base64');
+                
+                const am = `Hiya $MENTIONUSER!\nYour AuthKey is:\n${token}\n\nYou can use this key for sites like https://tritiumweb.zeusteam.dev/ that use ${botname} as an SSO provider`;
+                
+                if (envelope.dataMessage) {
+                    const dataMessage = envelope.dataMessage;
+                    const groupInfo = dataMessage.groupInfo;
+                    if (groupInfo && groupInfo.groupId) {
+                        await sendresponse(`Please check your DMs $MENTIONUSER for your AuthKey.`, envelope, `${prefix}authkey`, true);
+                        await sendmessage(am, envelope.sourceUuid, phonenumber);
+                    } else {
+                        await sendresponse(am, envelope, `${prefix}authkey`, false);
+                    }
+                } else if (envelope.syncMessage) {
+                    await sendresponse(`Please check your DMs $MENTIONUSER for your AuthKey.`, envelope, `${prefix}authkey`, true);
+                    await sendmessage(am, envelope.sourceUuid, phonenumber);
+                } else {
+                    await sendresponse(am, envelope, `${prefix}authkey`, false);
+                }
+            } catch (err) {
+                await sendresponse('Failed to create AuthKey. Please try again later.', envelope, `${prefix}authkey`, true);
+            }
+        },
+    },
+    "featurereq": {
+        description: `Request a new feature for ${botname} (and related services)`,
+        arguments: ['feature'],
+        execute: async (envelope, message) => {
+            try {
+                const User = mongoose.model('User');
+                const user = await User.findOne({ userid: envelope.sourceUuid });
+                if (!user.properties) {
+                    user.properties = {};
+                }
+                const match = message.match(new RegExp(`^${escapereg(prefix)}featurereq\\s+(.+)$`, 'i'));
+                if (!match || !match[1] || match[1].trim().length === 0) {
+                    await sendresponse('Please provide a valid feature request after the command.', envelope, `${prefix}featurereq`, true);
+                    return;
+                }
+                const feature = match[1].trim();
+                const FeatureReq = mongoose.model('FeatureReq');
+                const reqid = `req-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+                const featurereq = new FeatureReq({
+                    reqid: reqid,
+                    userid: envelope.sourceUuid,
+                    feature: feature,
+                });
+                await featurereq.save();
+                await sendresponse(`Your feature request has been submitted with ID ${reqid}.\nThank you!`, envelope, `${prefix}featurereq`, false);
+                await sendmessage(`New feature request from ${user.username} (${envelope.sourceUuid}):\nRequest ID: ${reqid}\nFeature: ${feature}`, managedaccount, phonenumber);
+            } catch (err) {
+                await sendresponse('Failed to submit your feature request. Please try again later.', envelope, `${prefix}featurereq`, true);
+            }
+        }
+    },
+    "poll": {
+        description: "View and vote on polls",
+        arguments: ['pollid', 'optionid'],
+        execute: async (envelope, message) => {
+            try {
+                const Poll = mongoose.model('Poll');
+                const match = message.match(new RegExp(`^${escapereg(prefix)}poll(?:\\s+(\\S+)(?:\\s+(\\S+))?)?$`, 'i'));
+                if (!match || !match[1]) {
+                    const polls = await Poll.find({});
+                    if (polls.length === 0) {
+                        await sendresponse('No polls are currently running.', envelope, `${prefix}poll`, true);
+                        return;
+                    }
+                    let pm = 'Running polls:\n';
+                    polls.forEach(poll => {
+                        pm += `- ID: ${poll.pollid}\n  Question: ${poll.question}\n\n`;
+                    });
+                    await sendresponse(pm.trim(), envelope, `${prefix}poll`, false);
+                    return;
+                }
+                const pollid = match[1];
+                const poll = await Poll.findOne({ pollid: pollid });
+                if (!poll) {
+                    await sendresponse(`Poll with ID ${pollid} not found.`, envelope, `${prefix}poll`, true);
+                    return;
+                }
+                if (!match[2]) {
+                    const uhv = poll.voters && poll.voters.includes(envelope.sourceUuid);
+                    const tv = poll.votes ? poll.votes.reduce((sum, count) => sum + count, 0) : 0;
+                    let pm = `Poll ID: ${poll.pollid}\nQuestion: ${poll.question}\nOptions:\n`;
+                    if (uhv) {
+                        poll.options.forEach((option, index) => {
+                            const voteCount = poll.votes ? poll.votes[index] || 0 : 0;
+                            pm += `${index + 1}. ${option} (${voteCount} votes)\n`;
+                        });
+                    }
+                    if (!poll.votes || !Array.isArray(poll.votes)) {
+                        return;
+                    } else {
+                        poll.options.forEach((option, index) => {
+                            pm += `${index + 1}. ${option}\n`;
+                        });
+                    }
+                    pm += `\nTotal votes: ${tv}`;
+                    await sendresponse(pm.trim(), envelope, `${prefix}poll`, false);
+                    return;
+                }
+                const vin = parseInt(match[2]) - 1;
+                if (isNaN(vin) || vin < 0 || vin >= poll.options.length) {
+                    await sendresponse('Invalid vote. Please provide a valid option number.', envelope, `${prefix}poll`, true);
+                    return;
+                }
+                
+                if (!poll.voters) {
+                    poll.voters = [];
+                }
+                if (poll.voters.includes(envelope.sourceUuid)) {
+                    await sendresponse('You have already voted on this poll.', envelope, `${prefix}poll`, true);
+                    return;
+                }
+                
+                if (!poll.votes || !Array.isArray(poll.votes)) {
+                    poll.votes = Array(poll.options.length).fill(0);
+                }
+                poll.votes[vin]++;
+                poll.voters.push(envelope.sourceUuid);
+                await poll.save();
+                await sendresponse(`Your vote for "${poll.options[vin]}" has been recorded.`, envelope, `${prefix}poll`, false);
+            } catch (err) {
+                await sendresponse('Failed to retrieve or vote on the poll. Please try again later.', envelope, `${prefix}poll`, true);
+            }
+        }
+    }
 };
 
 const ecocommands = {
@@ -215,6 +409,7 @@ const ecocommands = {
                 const User = mongoose.model('User');
                 const user = await User.findOne({ userid: envelope.sourceUuid });
                 if (!user.properties || !user.properties.eco) {
+                    user.properties = user.properties || {};
                     user.properties.eco = { balance: 0 };
                     user.markModified('properties');
                     await user.save();
@@ -244,13 +439,13 @@ const ecocommands = {
         execute: async (envelope, message) => {
             try {
                 const User = mongoose.model('User');
-                const args = message.split(' ');
-                if (args.length < 3) {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}give\\s+(\\S+)\\s+(\\S+)$`, 'i'));
+                if (!match) {
                     await sendresponse('Invalid arguments. Use "-give [user] [amount]" to give money to another user.', envelope, `${prefix}give`, true);
                     return;
                 }
-                const tui = args[1];
-                const amount = parseInt(args[2]);
+                const tui = match[1];
+                const amount = parseInt(match[2]);
                 if (isNaN(amount) || amount <= 0) {
                     await sendresponse('Please specify a valid amount to give.', envelope, `${prefix}give`, true);
                     return;
@@ -291,14 +486,14 @@ const adminonlycommands = {
         arguments: ['signalid', 'bot', 'message'],
         execute: async (envelope, message) => {
             try {
-                const args = message.split(' ');
-                if (args.length < 4) {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}proxymsg\\s+(\\S+)\\s+(\\S+)\\s+(.+)$`, 'i'));
+                if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-proxymsg [signalid] [bot] [message]" to proxy a message to another user.', envelope, `${prefix}proxymsg`, true);
                     return;
                 }
-                const tui = args[1];
-                const bot = args[2];
-                const proxmsg = message.slice(message.indexOf(args[2]) + args[2].length).trim();
+                const tui = match[1];
+                const bot = match[2];
+                const proxmsg = match[3];
                 if (!tui || !proxmsg) {
                     await sendresponse('Invalid arguments.\nUse "-proxymsg [signalid] [bot] [message]" to proxy a message to another user.', envelope, `${prefix}proxymsg`, true);
                     return;
@@ -315,7 +510,7 @@ const adminonlycommands = {
         arguments: ['userid', 'silent', 'tags'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(/^[-/]?changetags\s+(\S+)\s+(true|false)\s+"([^"]+)"(?:\s+"([^"]+)")?/i);
+                const match = message.match(new RegExp(`^${escapereg(prefix)}changetags\\s+(\\S+)\\s+(true|false)\\s+"([^"]+)"(?:\\s+"([^"]+)")?$`, 'i'));
                 if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-changetags [userid] [true/false] "[tags]" "[admin message (optional)]"" to set tags for a user.', envelope, `${prefix}changetags`, true);
                     return;
@@ -380,7 +575,7 @@ Legend:
 + - Added (you now have this tag)
 - - Removed (you don't have this tag anymore)
 
-These will apply to various Signal features, including stories, and if the owner of this bot has it set up, access to more TritiumBot features.${an}
+These will apply to various Signal features, including stories, and if the owner of this bot has it set up, access to more ${botname} features.${an}
 Have a question about your trust status or want to manage your accounts with Arctic Systems all in one place?
 Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll ignore your DMs)!
 (I am a bot and this message was sent automagically, if you have any questions, please contact nova.06)
@@ -427,6 +622,10 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
                     }
                     const profile = contact ? contact.profile : {};
                     const name = profile.givenName + (profile.familyName ? ` ${profile.familyName}` : '');
+                    if (profile.givenName && (!user.username || user.username !== profile.givenName)) {
+                        user.username = profile.givenName;
+                        user.save().catch(err => console.error('Failed to save username:', err));
+                    }
                     return {
                         userid: user.userid,
                         accesslevel: user.accesslevel,
@@ -449,13 +648,13 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
         arguments: ['onlysubscribed', 'message'],
         execute: async (envelope, message) => {
             try {
-                const args = message.split(' ');
-                if (args.length < 3) {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}broadcast\\s+(\\S+)\\s+(.+)$`, 'i'));
+                if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-broadcast [onlysubscribed] [message]" to send a message to all users.', envelope, `${prefix}broadcast`, true);
                     return;
                 }
-                const onlysubscribed = args[1];
-                const bm = message.slice(message.indexOf(args[1]) + args[1].length).trim();
+                const onlysubscribed = match[1];
+                const bm = match[2];
                 if (!bm) {
                     await sendresponse('Invalid arguments.\nUse "-broadcast [onlysubscribed] [message]" to send a message to all users.', envelope, `${prefix}broadcast`, true);
                     return;
@@ -495,7 +694,7 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
         arguments: ['userid', 'property'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(/^[-/]?delprop\s+(\S+)\s+(\S+)/i);
+                const match = message.match(new RegExp(`^${escapereg(prefix)}delprop\\s+(\\S+)\\s+(\\S+)$`, 'i'));
                 if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-delprop [userid] [property]" to delete a property from a user.', envelope, `${prefix}delprop`, true);
                     return;
@@ -526,7 +725,7 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
         arguments: ['property'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(/^[-/]?nukeprop\s+(\S+)/i);
+                const match = message.match(new RegExp(`^${escapereg(prefix)}nukeprop\\s+(\\S+)$`, 'i'));
                 if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-nukeprop [property]" to delete a property from all users.', envelope, `${prefix}nukeprop`, true);
                     return;
@@ -558,7 +757,7 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
         arguments: ['userid'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(/^[-/]?peerprops\s+(\S+)/i);
+                const match = message.match(new RegExp(`^${escapereg(prefix)}peerprops\\s+(\\S+)$`, 'i'));
                 if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-peerprops [userid]" to get properties of a user.', envelope, `${prefix}peerprops`, true);
                     return;
@@ -602,6 +801,203 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
             } catch (err) {
                 console.error(err);
                 await sendresponse('Failed to generate Jitsi link. Please try again later.', envelope, `${prefix}jitsi`, true);
+            }
+        }
+    },
+    "listfrs": {
+        description: "List all feature requests",
+        arguments: null,
+        execute: async (envelope, message) => {
+            try {
+                const FeatureReq = mongoose.model('FeatureReq');
+                const frs = await FeatureReq.find({});
+                if (frs.length === 0) {
+                    await sendresponse('No feature requests found.', envelope, `${prefix}listfrs`, true);
+                    return;
+                }
+                let frl = 'Feature Requests:\n';
+                frs.forEach(req => {
+                    frl += `- ID: ${req.reqid}\n  User: ${req.userid}\n  Feature: ${req.feature}\n`;
+                });
+                await sendresponse(frl.trim(), envelope, `${prefix}listfrs`, false);
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to retrieve feature requests. Please try again later.', envelope, `${prefix}listfrs`, true);
+            }
+        }
+    },
+    "delfr": {
+        description: "Delete a feature request by its ID",
+        arguments: ['reqid', 'reason'],
+        execute: async (envelope, message) => {
+            try {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}delfr\\s+(\\S+)(?:\\s+(.+))?$`, 'i'));
+                if (!match) {
+                    await sendresponse('Invalid arguments.\nUse "-delfr [reqid]" to delete a feature request by its ID.', envelope, `${prefix}delfr`, true);
+                    return;
+                }
+                const reqid = match[1];
+                const reason = match[2] || 'No reason provided';
+                const FeatureReq = mongoose.model('FeatureReq');
+                const featurereq = await FeatureReq.findOne({ reqid: reqid });
+                if (!featurereq) {
+                    await sendresponse(`Feature request with ID ${reqid} not found.`, envelope, `${prefix}delfr`, true);
+                    return;
+                }
+                await sendmessage(`Your feature request with ID ${reqid} has been closed.\nReason: ${reason}`, featurereq.userid, phonenumber);
+                await featurereq.deleteOne();
+                await sendresponse(`Feature request with ID ${reqid} has been deleted.`, envelope, `${prefix}delfr`, false);
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to delete feature request. Please try again later.', envelope, `${prefix}delfr`, true);
+            }
+        }
+    },
+    "mkpoll": {
+        description: "Create a poll",
+        arguments: ['"question"', '"option1"', '"option2"', '...'],
+        execute: async (envelope, message) => {
+            try {
+                const matches = [...message.matchAll(/"([^"]*)"/g)];
+                if (matches.length < 3) {
+                    await sendresponse('Invalid arguments.\nUse "-mkpoll "question" "option1" "option2" ..." to create a poll.', envelope, `${prefix}mkpoll`, true);
+                    return;
+                }
+                const question = matches[0][1];
+                const options = matches.slice(1).map(match => match[1]);
+                if (options.length < 2) {
+                    await sendresponse('Please provide at least two options for the poll.', envelope, `${prefix}mkpoll`, true);
+                    return;
+                }
+                const Poll = mongoose.model('Poll');
+                const pollid = `poll-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+                const votes = new Array(options.length).fill(0);
+                const poll = new Poll({
+                    pollid: pollid,
+                    question: question,
+                    options: options,
+                    votes: votes
+                });
+                await poll.save();
+                const pm = `Poll created with ID: ${pollid}\nQuestion: ${question}\nOptions:\n${options.map((opt, idx) => `${idx+1}. ${opt}`).join('\n')}`;
+                await sendresponse(pm, envelope, `${prefix}mkpoll`, false);
+                const User = mongoose.model('User');
+                const users = await User.find({});
+                if (users.length === 0) {
+                    await sendresponse('No users found in the database.', envelope, `${prefix}broadcast`, true);
+                    return;
+                }
+                for (const user of users) {
+                    try {
+                        await sendmessage(`New poll created: ${pollid}\nQuestion: ${question}\n\nView the options with "-poll ${pollid}"\nVote an option with "-poll ${pollid} [optionid]"`, user.userid, phonenumber);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    } catch (err) {
+                        console.error(`Failed to send message to user ${user.userid}:`, err);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to create poll. Please try again later.', envelope, `${prefix}mkpoll`, true);
+            }
+        }
+    },
+    "closepoll": {
+        description: "Close a poll by its ID",
+        arguments: ['pollid'],
+        execute: async (envelope, message) => {
+            try {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}closepoll\\s+(\\S+)$`, 'i'));
+                if (!match) {
+                    await sendresponse('Invalid arguments.\nUse "-closepoll [pollid]" to close a poll by its ID.', envelope, `${prefix}closepoll`, true);
+                    return;
+                }
+                const pollid = match[1];
+                const Poll = mongoose.model('Poll');
+                const poll = await Poll.findOne({ pollid: pollid });
+                if (!poll) {
+                    await sendresponse(`Poll with ID ${pollid} not found.`, envelope, `${prefix}closepoll`, true);
+                    return;
+                }
+                let rm = `Poll Results for "${poll.question}":\n\n`;
+                const tv = poll.votes.reduce((sum, count) => sum + count, 0);
+                poll.options.forEach((option, index) => {
+                    const vc = poll.votes[index];
+                    const per = tv > 0 ? Math.round((vc / tv) * 100) : 0;
+                    rm += `${index + 1}. ${option}: ${vc} votes (${per}%)\n`;
+                });
+                if (tv === 0) {
+                    rm += "\nNo votes were cast in this poll.";
+                } else {
+                    rm += `\nTotal votes: ${tv}`;
+                }
+                const User = mongoose.model('User');
+                const users = await User.find({});
+                for (const user of users) {
+                    try {
+                        await sendmessage(`Poll "${pollid}" has been closed.\n\n${rm}`, user.userid, phonenumber);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    } catch (err) {
+                        console.error(`Failed to send poll results to user ${user.userid}:`, err);
+                    }
+                }
+                await poll.deleteOne();
+                await sendresponse(`Poll with ID ${pollid} has been closed and deleted.\n\n${rm}`, envelope, `${prefix}closepoll`, false);
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to close poll. Please try again later.', envelope, `${prefix}closepoll`, true);
+            }
+        }
+    },
+    "killuser": {
+        description: "Forcefully unregisters a user",
+        arguments: ['userid'],
+        execute: async (envelope, message) => {
+            try {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}killuser\\s+(\\S+)$`, 'i'));
+                if (!match) {
+                    await sendresponse('Invalid arguments.\nUse "-killuser [userid]" to unregister a user.', envelope, `${prefix}killuser`, true);
+                    return;
+                }
+                const tui = match[1];
+                const User = mongoose.model('User');
+                const userobject = await User.findOne({ userid: tui });
+                if (!userobject) {
+                    await sendresponse(`User ${tui} not found.`, envelope, `${prefix}killuser`, true);
+                    return;
+                }
+                await userobject.deleteOne();
+                await sendresponse(`User ${tui} has been forcefully unregistered.`, envelope, `${prefix}killuser`, false);
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to unregister user. Please try again later.', envelope, `${prefix}killuser`, true);
+            }
+        }
+    },
+    "migration": {
+        description: "Perform a database migration (set up the migration in this commands execute section first)",
+        arguments: null,
+        execute: async (envelope, message) => {
+            sendresponse('A migration isn\'t set up yet, please set one up in this commands execute section.', envelope, `${prefix}migration`, true); return;
+            try {
+                const User = mongoose.model('User');
+                const users = await User.find({});
+                if (users.length === 0) {
+                    await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
+                    return;
+                }
+                let uc = 0;
+                for (const user of users) {
+                    if (user.properties.authkey && user.properties.authkey.createdAt) {
+                        delete user.properties.authkey.createdAt;
+                        user.markModified('properties');
+                        await user.save();
+                        uc++;
+                    }
+                }
+                await sendresponse(`Migration completed. Updated ${uc} users.`, envelope, `${prefix}migration`, false);
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to perform migration. Please try again later.', envelope, `${prefix}migration`, true);
             }
         }
     }
@@ -694,7 +1090,7 @@ const builtincommands = {
         arguments: null,
         execute: async (envelope, message) => {
             try {
-                await sendresponse(`TritiumBot v${process.env.npm_package_version} running on ${os.type()} ${os.release()} (${os.arch()})\nBased on LunarN0v4/tritiumbotv2 (https://github.com/LunarN0v4/tritiumbotv2).`, envelope, `${prefix}info`, false);
+                await sendresponse(`${botname} v${process.env.npm_package_version} running on ${os.type()} ${os.release()} (${os.arch()})\nBased on LunarN0v4/tritiumbotv2 (https://github.com/LunarN0v4/tritiumbotv2).`, envelope, `${prefix}info`, false);
             } catch (err) {
                 console.error(err);
             }
@@ -742,7 +1138,7 @@ const builtincommands = {
                 const user = await User.findOne({ userid: mention.uuid });
                 envelope.sourceUuid = mention.uuid;
                 if (!user) {
-                    await sendresponse(`User ID for $MENTIONUSER is ${mention.uuid} (TritiumBot doesn't know this user).`, envelope, `${prefix}resolveid`, false);
+                    await sendresponse(`User ID for $MENTIONUSER is ${mention.uuid} (${botname} doesn't know this user).`, envelope, `${prefix}resolveid`, false);
                     return;
                 } else {
                     await sendresponse(`User ID for $MENTIONUSER is ${mention.uuid}.`, envelope, `${prefix}resolveid`, false);
@@ -758,7 +1154,7 @@ const builtincommands = {
 async function invokecommand(command, envelope) {
     const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
     if (blacklist.includes(envelope.sourceUuid)) {
-    await sendresponse('Hi $MENTIONUSER.\nYou are blacklisted from using TritiumBot.\nPlease contact @nova.66 for more information.', envelope, `${prefix}${command}`, true);
+    await sendresponse(`Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @nova.06 for more information.`, envelope, `${prefix}${command}`, true);
         return;
     }
     const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
@@ -777,25 +1173,28 @@ async function invokecommand(command, envelope) {
         }
     }
     message = message.trim();
+    message = message.replace(ic, '');
     if (propercommand === '') {
-        await sendresponse('No command specified.\nUse "-help" for the full command list!', envelope, command, true);
+        if (envelope.dataMessage && !envelope.dataMessage.groupInfo) {
+            await sendresponse('No command specified.\nUse "-help" for the full command list!', envelope, command, true);
+        }
     } else if (builtincommands[propercommand]) {
         await builtincommands[propercommand].execute(envelope, message);
     } else if (guestcommands[propercommand]) {
         if (!user) {
             await guestcommands[propercommand].execute(envelope, message);
         } else {
-            await sendresponse('You are already registered as a TritiumBot user $MENTIONUSER.', envelope, command, true);
+            await sendresponse(`You are already registered as a ${botname} user $MENTIONUSER.`, envelope, command, true);
         }
     } else if (usercommands[propercommand]) {
         if (!user) {
-            await sendresponse('You are not registered as a TritiumBot user $MENTIONUSER.\nUse "-register" to register!', envelope, command, true);
+            await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
         } else {
             await usercommands[propercommand].execute(envelope, message);
         }
     } else if (ecocommands[propercommand]) {
         if (!user) {
-            await sendresponse('You are not registered as a TritiumBot user $MENTIONUSER.\nUse "-register" to register!', envelope, command, true);
+            await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
         //} else if (!user.accesslevel || user.accesslevel < 0) {
         //    await sendresponse('These commands are currently in development, $MENTIONUSER.\nSorry for the inconvenience.', envelope, command, true);
         } else {
@@ -826,19 +1225,14 @@ async function invokeselfcommand(command, envelope) {
         }
     }
     message = message.trim();
+    message = message.replace(ic, '');
     const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
     if (builtincommands[propercommand]) {
         await builtincommands[propercommand].execute(envelope, message);
     } else if (usercommands[propercommand]) {
         await usercommands[propercommand].execute(envelope, message);
     } else if (ecocommands[propercommand]) {
-        const User = mongoose.model('User');
-        const user = await User.findOne({ userid: envelope.sourceUuid });
-        if (user && user.accesslevel >= 0) {
-            await ecocommands[propercommand].execute(envelope, message);
-        } else {
-            await sendresponse('These commands are currently in development, $MENTIONUSER.\nSorry for the inconvenience.', envelope, command, true);
-        }
+        await ecocommands[propercommand].execute(envelope, message);
     } else if (adminonlycommands[propercommand]) {
         const User = mongoose.model('User');
         const user = await User.findOne({ userid: envelope.sourceUuid });

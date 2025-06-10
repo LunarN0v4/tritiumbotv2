@@ -14,12 +14,13 @@ if (config.socketpath === '' || config.socketpath === null || config.socketpath 
     process.exit(1);
 };
 const socketpath = config.socketpath;
-const botname = config.botname;
-const botversion = config.botversion;
+const botname = config.botname || 'TritiumBot';
+const botversion = config.botversion || true;
+const tagname = config.tagname || 'Development';
 const botavatar = config.botavatar;
-const botabout = config.botabout;
+const botabout = config.botabout || 'A simple, fast, and robust bot for Signal, powered by TritiumBot.';
 const phonenumber = config.phonenumber;
-const externalsignal = config.externalsignal;
+const externalsignal = config.externalsignal || true;
 config = undefined;
 let daemon;
 
@@ -34,7 +35,7 @@ function startconn(client, callback) {
 }
 
 function gracefulShutdown() {
-    console.log('Shutting down TritiumBot...');
+    console.log(`Shutting down ${botname}...`);
     if (daemon && !externalsignal) {
         daemon.on('exit', () => {
             process.exit(0);
@@ -103,13 +104,18 @@ export function setupbotprofile() {
             params: {
                 account: phonenumber,
                 givenName: botname,
-                avatar: botavatar,
                 about: botabout,
             },
         }
-        if (botversion === true) {
-            const botversionjson = parse(fs.readFileSync('package.json', 'utf8')).version;
-            json.params.familyName = `[${botversionjson} Development]`;
+        if (botversion && tagname) {
+            json.params.familyName = `[${process.env.npm_package_version} ${tagname}]`;
+        } else if (botversion) {
+            json.params.familyName = `[${process.env.npm_package_version}]`;
+        } else if (tagname) {
+            json.params.familyName = `${tagname}`;
+        }
+        if (botavatar) {
+            json.params.avatar = botavatar;
         }
         json = JSON.stringify(json);
         client.write(json);

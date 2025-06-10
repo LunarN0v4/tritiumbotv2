@@ -10,6 +10,7 @@ let config = parse(fs.readFileSync('config.jsonc', 'utf8'));
 const socketpath = config.socketpath;
 const axiomtoken = config.axiomtoken;
 const phonenumber = config.phonenumber;
+const prefix = config.prefix || '-';
 const managedaccount = config.managedaccount;
 let axiom;
 if (!axiomtoken || axiomtoken === '' || axiomtoken === null || axiomtoken === undefined) {
@@ -134,7 +135,6 @@ function sendmessage(message, recipient, sender=undefined, props={}) {
             id,
             method: 'send',
             params: {
-                //quoteTimestamp: timestamp,
                 account: sender && sender !== undefined ? sender : phonenumber,
             },
         };
@@ -221,12 +221,12 @@ async function interpretmessage(json) {
                 if (message === '' || message === null || message === undefined) {
                     return;
                 }
-                if (message.startsWith('-')) {
+                if (message.startsWith(prefix)) {
                     persistentconn(async () => {
                         sendreadreceipt(envelope.sourceUuid, dataMessage.timestamp);
-                        const commandsModule = await import(`./commands.js?t=${Date.now()}`);
-                        const { invokecommand } = commandsModule;
-                        invokecommand(message, envelope, dataMessage);
+                        const cm = await import(`./commands.js?t=${Date.now()}`);
+                        const { invokecommand } = cm;
+                        invokecommand(message, envelope);
                     });
                 }
             } else if (envelope.syncMessage && envelope.sourceNumber === managedaccount) {
@@ -237,7 +237,7 @@ async function interpretmessage(json) {
                     if (message === '' || message === null || message === undefined) {
                         return;
                     }
-                    if (message.startsWith('-')) {
+                    if (message.startsWith(prefix)) {
                         persistentconn(async () => {
                             if (sentMessage.groupInfo && sentMessage.groupInfo.groupId) {
                                 const tid = Math.floor(Math.random() * 1024) + 1;
@@ -276,9 +276,9 @@ async function interpretmessage(json) {
                                                         return;
                                                     } else {
                                                         envelope.isselfcommand = true;
-                                                        const commandsModule = await import(`./commands.js?t=${Date.now()}`);
-                                                        const { invokeselfcommand } = commandsModule;
-                                                        invokeselfcommand(message, envelope, sentMessage);
+                                                        const cm = await import(`./commands.js?t=${Date.now()}`);
+                                                        const { invokeselfcommand } = cm;
+                                                        invokeselfcommand(message, envelope);
                                                     }
                                                 }
                                                 return;
@@ -291,9 +291,9 @@ async function interpretmessage(json) {
                                 client.on('data', responsehandler);
                             } else if (sentMessage.destinationNumber != phonenumber && sentMessage.destinationNumber !== managedaccount && sentMessage.destinationUuid !== '7dc7c561-7c9b-4ccd-b38d-f6b4ace559ee') {
                                 envelope.isselfcommand = true;
-                                const commandsModule = await import(`./commands.js?t=${Date.now()}`);
-                                const { invokeselfcommand } = commandsModule;
-                                invokeselfcommand(message, envelope, sentMessage);
+                                const cm = await import(`./commands.js?t=${Date.now()}`);
+                                const { invokeselfcommand } = cm;
+                                invokeselfcommand(message, envelope);
                             }
                         });
                     }
