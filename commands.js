@@ -341,6 +341,96 @@ const usercommands = {
                 await sendresponse('Failed to retrieve or vote on the poll. Please try again later.', envelope, `${prefix}poll`, true);
             }
         }
+    },
+    "module": {
+        description: `Manage your ${botname} modules`,
+        arguments: ['module', 'enable/disable'],
+        execute: async (envelope, message) => {
+            try {
+                const match = message.match(new RegExp(`^${escapereg(prefix)}module(?:\\s+(\\S+)(?:\\s+(enable|disable))?)?$`, 'i'));
+                if (!match) {
+                    await sendresponse('Invalid arguments. Use "-module [module] [enable/disable]" to enable or disable a module.', envelope, `${prefix}module`, true);
+                    return;
+                }
+                const User = mongoose.model('User');
+                const user = await User.findOne({ userid: envelope.sourceUuid });
+                const avamods = modules.filter(m => m.user && !m.admin);
+                const enamods = user && user.properties && user.properties.tags ? user.properties.tags : [];
+                if (!match[1]) {
+                    if (avamods.length === 0) {
+                        await sendresponse('No modules are available.', envelope, `${prefix}module`, true);
+                        return;
+                    }
+                    const avamods2 = avamods.filter(m => !enamods.includes(m.section));
+                    let modlist = '';
+                    if (enamods.length > 0) {
+                        modlist += 'Enabled modules:\n';
+                        enamods.forEach(tag => {
+                            const module = avamods.find(m => m.section === tag);
+                            if (module) {
+                                modlist += `- ${tag}\n`;
+                            }
+                        });
+                        if (user.accesslevel === 1) {
+                            modlist += '- admin (this is purely cosmetic, this cannot be disabled)\n';
+                        }
+                    }
+                    if (avamods2.length > 0) {
+                        modlist += 'Available modules:\n';
+                        avamods2.forEach(module => {
+                            modlist += `- ${module.section}\n`;
+                        });
+                    }
+                    modlist += `\nUse "${prefix}module [module] [enable/disable]" to enable or disable a module.`;
+                    modlist = modlist.trim();
+                    await sendresponse(modlist, envelope, `${prefix}module`, false);
+                    return;
+                }
+                if (!match[2]) {
+                    await sendresponse('Invalid arguments. Use "-module [module] [enable/disable]" to enable or disable a module.', envelope, `${prefix}module`, true);
+                    return;
+                }
+                const module = match[1].toLowerCase();
+                const action = match[2].toLowerCase();
+                if (!user.properties) {
+                    user.properties = {};
+                }
+                if (!user.properties.tags) {
+                    user.properties.tags = [];
+                }
+                if (!avamods.some(m => m.section === module)) {
+                    await sendresponse(`Module "${module}" doesn't appear to exist.`, envelope, `${prefix}module`, true);
+                    return;
+                }
+                if (action === 'enable') {
+                    if (user.properties.tags.includes(module)) {
+                        await sendresponse(`Module "${module}" is already enabled.`, envelope, `${prefix}module`, true);
+                        return;
+                    }
+                    const mod = modules.find(m => m.section === module);
+                    if (mod && mod.execute) {
+                        await mod.execute(user);
+                    }
+                    user.properties.tags = [...(user.properties.tags || []), `${module}`];
+                    await sendresponse(`Module "${module}" has been enabled.`, envelope, `${prefix}module`, false);
+                } else if (action === 'disable') {
+                    if (!user.properties.tags.includes(module)) {
+                        await sendresponse(`Module "${module}" is not enabled.`, envelope, `${prefix}module`, true);
+                        return;
+                    }
+                    user.properties.tags = user.properties.tags.filter(tag => tag !== module);
+                    await sendresponse(`Module "${module}" has been disabled.`, envelope, `${prefix}module`, false);
+                } else {
+                    await sendresponse('Invalid action. Use "enable" or "disable".', envelope, `${prefix}module`, true);
+                    return;
+                }
+                user.markModified('properties');
+                await user.save();
+            } catch (err) {
+                console.error(err);
+                await sendresponse('Failed to manage modules. Please try again later.', envelope, `${prefix}module`, true);
+            }
+        }
     }
 };
 
@@ -507,23 +597,16 @@ const adminonlycommands = {
     },
     "changetags": {
         description: "Change the tags of a user by their userid",
-        arguments: ['userid', 'silent', 'tags'],
+        arguments: ['userid', 'tags'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}changetags\\s+(\\S+)\\s+(true|false)\\s+"([^"]+)"(?:\\s+"([^"]+)")?$`, 'i'));
+                const match = message.match(new RegExp(`^${escapereg(prefix)}changetags\\s+(\\S+)\\s+"([^"]+)"$`, 'i'));
                 if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-changetags [userid] [true/false] "[tags]" "[admin message (optional)]"" to set tags for a user.', envelope, `${prefix}changetags`, true);
+                    await sendresponse('Invalid arguments.\nUse "-changetags [userid] "[tags]"" to set tags for a user.', envelope, `${prefix}changetags`, true);
                     return;
                 }
                 const tui = match[1];
-                const silent = match[2];
-                const nt = match[3].split(/\s+/).filter(Boolean);
-                const adminmsg = match[4];
-                const vt = ['L0', 'L1', 'L2', 'L3'];
-                if (!nt.every(tag => vt.includes(tag))) {
-                    await sendresponse('Invalid tag(s) specified. Valid tags are: L0, L1, L2, L3.', envelope, `${prefix}changetags`, true);
-                    return;
-                }
+                const nt = match[2].split(/\s+/).filter(Boolean);
                 const User = mongoose.model('User');
                 let userobject = await User.findOne({ userid: tui });
                 if (!userobject) {
@@ -537,61 +620,16 @@ const adminonlycommands = {
                     userobject = cu;
                 }
                 if (!userobject.properties) userobject.properties = {};
-                const pt = Array.isArray(userobject.properties.tags) ? userobject.properties.tags : [];
                 userobject.properties.tags = nt;
                 userobject.markModified('properties');
                 await userobject.save();
-                if (silent === 'false') {
-                    const tls = {
-                        L0: "Layer 0 - Besties or higher",
-                        L1: "Layer 1 - Trustable/Friend",
-                        L2: "Layer 2 - Acquaintance",
-                        L3: "Layer 3 - Default"
-                    };
-                    const tl = vt.map(tag => {
-                        if (pt.includes(tag) && nt.includes(tag)) {
-                            return `\\ ${tls[tag]}`;
-                        } else if (!pt.includes(tag) && nt.includes(tag)) {
-                            return `+ ${tls[tag]}`;
-                        } else if (pt.includes(tag) && !nt.includes(tag)) {
-                            return `- ${tls[tag]}`;
-                        } else {
-                            return `/ ${tls[tag]}`;
-                        }
-                    }).join('\n');
-                    let an = '\n';
-                    if (adminmsg) {
-                        an = `\nAdmin note: "${adminmsg}"\n`;
-                    }
-                    const tum =
-`Hiya $MENTIONUSER (Signal ID: ${tui}),
-
-Your trust status has been updated and your new tags are:
-${tl}
-
-Legend:
-/ - Unchanged (you don't have this tag)
-\\ - Unchanged (you do have this tag)
-+ - Added (you now have this tag)
-- - Removed (you don't have this tag anymore)
-
-These will apply to various Signal features, including stories, and if the owner of this bot has it set up, access to more ${botname} features.${an}
-Have a question about your trust status or want to manage your accounts with Arctic Systems all in one place?
-Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll ignore your DMs)!
-(I am a bot and this message was sent automagically, if you have any questions, please contact nova.06)
-`;
-                    await sendmessage(tum, tui, phonenumber);
-                } else if (silent !== 'true') {
-                    await sendresponse('Invalid value for silent. Use "true" or "false".', envelope, `${prefix}changetags`, true);
-                    return;
-                }
                 await sendresponse(`Tags for user ${tui} have been updated to: ${nt.join(', ')}`, envelope, `${prefix}changetags`, false);
             } catch (err) {
                 await sendresponse('Failed to change tags. Please try again later.', envelope, `${prefix}changetags`, true);
             }
         }
-        },
-        "getusers": {
+    },
+    "getusers": {
         description: "Get a list of users from the database",
         arguments: null,
         execute: async (envelope, message) => {
@@ -635,7 +673,7 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
                 });
                 let ul = 'Users:\n';
                 ulm.forEach(user => {
-                    ul += `- ${user.userid} (${user.name}) (Access Level: ${user.accesslevel}) (Tags: ${user.tags.join(', ')})\n`;
+                    ul += `- ${user.userid} (${user.name}) (Is Admin: ${user.accesslevel === 1 ? 'true' : 'false'})${user.tags.length > 0 ? ` (Tags: ${user.tags.join(', ')})` : ''}\n`;
                 });
                 await sendresponse(ul.trim(), envelope, `${prefix}getusers`, false);
             } catch (err) {
@@ -987,8 +1025,13 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
                 }
                 let uc = 0;
                 for (const user of users) {
-                    if (user.properties.authkey && user.properties.authkey.createdAt) {
-                        delete user.properties.authkey.createdAt;
+                    if (user.properties.eco) {
+                        user.properties.tags = ['eco'];
+                        user.markModified('properties');
+                        await user.save();
+                        uc++;
+                    } else {
+                        user.properties.tags = [];
                         user.markModified('properties');
                         await user.save();
                         uc++;
@@ -1014,55 +1057,91 @@ const builtincommands = {
                 console.error(err);
             }
         }
-    },
-    "help": {
+        },
+        "help": {
         description: "Display this help message",
-        arguments: null,
+        arguments: ['optional: section'],
         execute: async (envelope, message) => {
             try {
-                let helpmessage = "Hiya $MENTIONUSER!\nHere are my available commands:\n";
-                helpmessage += "  Built-in commands:\n";
-                for (const cmd in builtincommands) {
-                    if (Object.prototype.hasOwnProperty.call(builtincommands, cmd)) {
-                        if (builtincommands[cmd].arguments) {
-                            helpmessage += `    ${prefix}${cmd} [${builtincommands[cmd].arguments.join('] [')}] : ${builtincommands[cmd].description}\n`;
-                        } else {
-                            helpmessage += `    ${prefix}${cmd} : ${builtincommands[cmd].description}\n`;
-                        }
-                    }
-                }
+                const match = message.match(new RegExp(`^${escapereg(prefix)}help(?:\\s+(\\S+))?$`, 'i'));
+                const section = match && match[1] ? match[1].toLowerCase() : null;
+                let helpmessage = "Hiya $MENTIONUSER!\n";
                 const user = await mongoose.model('User').findOne({ userid: envelope.sourceUuid });
-                const commands = user ? usercommands : guestcommands;
-                helpmessage += "  User commands:\n";
-                for (const cmd in commands) {
-                    if (Object.prototype.hasOwnProperty.call(commands, cmd)) {
-                        if (commands[cmd].arguments) {
-                            helpmessage += `    ${prefix}${cmd} [${commands[cmd].arguments.join('] [')}] : ${commands[cmd].description}\n`;
-                        } else {
-                            helpmessage += `    ${prefix}${cmd} : ${commands[cmd].description}\n`;
-                        }
-                    }
-                }
-                if (user) {
-                    helpmessage += "  Eco commands:\n";
-                    for (const cmd in ecocommands) {
-                        if (Object.prototype.hasOwnProperty.call(ecocommands, cmd)) {
-                            if (ecocommands[cmd].arguments) {
-                                helpmessage += `    ${prefix}${cmd} [${ecocommands[cmd].arguments.join('] [')}] : ${ecocommands[cmd].description}\n`;
+                if (!section) {
+                    helpmessage += "Here are my available commands:\n";
+                    helpmessage += "  Built-in commands:\n";
+                    for (const cmd in builtincommands) {
+                        if (Object.prototype.hasOwnProperty.call(builtincommands, cmd)) {
+                            if (builtincommands[cmd].arguments) {
+                                helpmessage += `    ${prefix}${cmd} [${builtincommands[cmd].arguments.join('] [')}] : ${builtincommands[cmd].description}\n`;
                             } else {
-                                helpmessage += `    ${prefix}${cmd} : ${ecocommands[cmd].description}\n`;
+                                helpmessage += `    ${prefix}${cmd} : ${builtincommands[cmd].description}\n`;
                             }
                         }
                     }
-                }
-                if (user && user.accesslevel === 1) {
-                    helpmessage += "  Nova-only commands:\n";
-                    for (const cmd in adminonlycommands) {
-                        if (Object.prototype.hasOwnProperty.call(adminonlycommands, cmd)) {
-                            if (adminonlycommands[cmd].arguments) {
-                                helpmessage += `    ${prefix}${cmd} [${adminonlycommands[cmd].arguments.join('] [')}] : ${adminonlycommands[cmd].description}\n`;
+                    const commands = user ? usercommands : guestcommands;
+                    helpmessage += "  User commands:\n";
+                    for (const cmd in commands) {
+                        if (Object.prototype.hasOwnProperty.call(commands, cmd)) {
+                            if (commands[cmd].arguments) {
+                                helpmessage += `    ${prefix}${cmd} [${commands[cmd].arguments.join('] [')}] : ${commands[cmd].description}\n`;
                             } else {
-                                helpmessage += `    ${prefix}${cmd} : ${adminonlycommands[cmd].description}\n`;
+                                helpmessage += `    ${prefix}${cmd} : ${commands[cmd].description}\n`;
+                            }
+                        }
+                    }
+                    const as = modules.filter(s => {
+                        if (s.admin && (!user || user.accesslevel !== 1)) return false;
+                        if (s.user && !user) return false;
+                        return true;
+                    });
+                    if (as.length > 0) {
+                        const sect = as.filter(s => {
+                            if (!user.properties || !user.properties.tags) return false;
+                            return user.properties.tags.includes(s.section);
+                        });
+                        if (user.accesslevel === 1) {
+                            const adminmod = modules.find(m => m.section === "admin");
+                            if (adminmod) {
+                                sect.push(adminmod);
+                            }
+                        }
+                        if (sect.length === 0) {
+                            helpmessage += `You don't have any modules enabled. Add some with "${prefix}module"!`;
+                        } else {
+                            helpmessage += `\nYou have the following modules enabled (use "-help <module>" to see the available commands):\n`;
+                            for (const s of sect) {
+                                helpmessage += `  - ${s.section}\n`;
+                            }
+                        }
+                    }
+                } else {
+                    const so = modules.find(s => s.section === section);
+                    if (!so) {
+                        const as = modules.filter(s => {
+                            if (s.admin && (!user || user.accesslevel !== 1)) return false;
+                            if (s.user && !user) return false;
+                            return true;
+                        });
+                        helpmessage += `Unknown help module "${section}". Available modules: ${as.map(s => s.section).join(', ')}`;
+                    } else if (so.admin && (!user || user.accesslevel !== 1)) {
+                        const as = modules.filter(s => {
+                            if (s.admin && (!user || user.accesslevel !== 1)) return false;
+                            if (s.user && !user) return false;
+                            return true;
+                        });
+                        helpmessage += `Unknown help module "${section}". Available modules: ${as.map(s => s.section).join(', ')}`;
+                    } else if (so.user && !user) {
+                        helpmessage += `You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`;
+                    } else {
+                        helpmessage += `${so.section.charAt(0).toUpperCase() + so.section.slice(1)} commands:\n`;
+                        for (const cmd in so.commands) {
+                            if (Object.prototype.hasOwnProperty.call(so.commands, cmd)) {
+                                if (so.commands[cmd].arguments) {
+                                    helpmessage += `    ${prefix}${cmd} [${so.commands[cmd].arguments.join('] [')}] : ${so.commands[cmd].description}\n`;
+                                } else {
+                                    helpmessage += `    ${prefix}${cmd} : ${so.commands[cmd].description}\n`;
+                                }
                             }
                         }
                     }
@@ -1150,6 +1229,34 @@ const builtincommands = {
         }
     }
 };
+
+const modules = [
+    {
+        section: "eco",
+        commands: ecocommands,
+        user: true,
+        admin: false,
+        execute: async (user) => {
+            if (!user.properties.eco) {
+                user.properties.eco = {};
+            }
+            if (!user.properties.eco.balance) {
+                user.properties.eco.balance = 0;
+            }
+            user.markModified('properties');
+            await user.save();
+        }
+    },
+    {
+        section: "admin",
+        commands: adminonlycommands,
+        user: true,
+        admin: true,
+        execute: async (user) => {
+            return;
+        }
+    }
+];
 
 async function invokecommand(command, envelope) {
     const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
