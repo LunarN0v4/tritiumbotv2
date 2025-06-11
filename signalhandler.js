@@ -40,29 +40,29 @@ function persistentconn(callback) {
         callback();
         return;
     }
-    
     if (ic) {
         pendingcbs.push(callback);
         return;
     }
-    
     ic = true;
     pendingcbs.push(callback);
     client = new net.Socket();
-    
+    client.setMaxListeners(50);
     client.on('error', (error) => {
         console.error('Handler connection had a major skill issue:', error);
+        client.removeAllListeners();
         client = null;
         ic = false;
         pendingcbs = [];
     });
-    
     client.on('close', () => {
         console.log('Handler connection closed');
+        if (client) {
+            client.removeAllListeners();
+        }
         client = null;
         ic = false;
     });
-    
     startconn(client, () => {
         ic = false;
         const callbacks = [...pendingcbs];
@@ -76,7 +76,6 @@ function sendreadreceipt(recipient, timestamp) {
         console.error('No handler connection available for read receipt');
         return;
     }
-    
     const tid = Math.floor(Math.random() * 1024) + 1;
     const id = tid.toString();
     let json = {
@@ -99,7 +98,6 @@ function sendtypingindicator(recipient, stop, sender=undefined, props={}) {
             console.error('No handler connection available for typing indicator');
             return;
         }
-        
         const tid = Math.floor(Math.random() * 1024) + 1;
         const id = tid.toString();
         let json = {
@@ -190,9 +188,10 @@ function sendmessage(message, recipient, sender=undefined, props={}) {
             }
         };
         client.on('data', responsehandler);
-        setTimeout(() => {
+        const timeid = setTimeout(() => {
             client.removeListener('data', responsehandler);
         }, 10000);
+        responsehandler.timeid = timeid;
     });
 };
 
@@ -289,6 +288,9 @@ async function interpretmessage(json) {
                                     }
                                 };
                                 client.on('data', responsehandler);
+                                setTimeout(() => {
+                                    client.removeListener('data', responsehandler);
+                                }, 5000);
                             } else if (sentMessage.destinationNumber != phonenumber && sentMessage.destinationNumber !== managedaccount && sentMessage.destinationUuid !== '7dc7c561-7c9b-4ccd-b38d-f6b4ace559ee') {
                                 envelope.isselfcommand = true;
                                 const cm = await import(`./commands.js?t=${Date.now()}`);
@@ -352,17 +354,31 @@ function getcontacts(account=phonenumber, recipient=undefined) {
                             }
                             const result = pj.result;
                             resolve(result);
+                            return;
                         }
                     } catch (error) {
                         console.error('Error parsing JSON:', error);
                     }
                 }
             };
+
             client.on('data', responsehandler);
-            setTimeout(() => {
+            const timeid = setTimeout(() => {
                 client.removeListener('data', responsehandler);
                 reject(new Error('Timeout waiting for contacts response'));
             }, 5000);
+            const or = resolve;
+            const ore = reject;
+            resolve = (...args) => {
+                clearTimeout(timeid);
+                client.removeListener('data', responsehandler);
+                or(...args);
+            };
+            reject = (...args) => {
+                clearTimeout(timeid);
+                client.removeListener('data', responsehandler);
+                ore(...args);
+            };
         });
     });
 }

@@ -648,7 +648,7 @@ Contact me at tritium.02 (you may need to ask nova.06 for access, otherwise I'll
         arguments: ['onlysubscribed', 'message'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}broadcast\\s+(\\S+)\\s+(.+)$`, 'i'));
+                const match = message.match(new RegExp(`^${escapereg(prefix)}broadcast\\s+(\\S+)\\s+([\\s\\S]+)$`, 'i'));
                 if (!match) {
                     await sendresponse('Invalid arguments.\nUse "-broadcast [onlysubscribed] [message]" to send a message to all users.', envelope, `${prefix}broadcast`, true);
                     return;

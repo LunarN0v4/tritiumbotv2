@@ -72,6 +72,7 @@ function signalclidaemon() {
 
 function signalclihook() {
     const client = new net.Socket();
+    client.setMaxListeners(50);
     startconn(client, () => {
         console.log('Signal CLI hook connected');
         setupbotprofile();
