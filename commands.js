@@ -1302,8 +1302,6 @@ async function invokecommand(command, envelope) {
     } else if (ecocommands[propercommand]) {
         if (!user) {
             await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
-        //} else if (!user.accesslevel || user.accesslevel < 0) {
-        //    await sendresponse('These commands are currently in development, $MENTIONUSER.\nSorry for the inconvenience.', envelope, command, true);
         } else {
             await ecocommands[propercommand].execute(envelope, message);
         }
